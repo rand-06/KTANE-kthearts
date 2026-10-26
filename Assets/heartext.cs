@@ -13,10 +13,17 @@ public static class HEARTEXT {
         }
         return ans;
     }
-
     public static List<T> Append<T>(this List<T> list, T t)
     {
         list.Add(t);
         return list;
+    }
+    public static List<T> Append<T>(this List<T> list, List<T> addList)
+    {
+        foreach(T t in addList) list.Add(t);
+        return list;
+    }
+    public static List<T> Remove<T>(this List<T> list, List<T> elementsToRemove){
+        return list.Where(x => !elementsToRemove.Contains(x)).ToList();
     }
 }

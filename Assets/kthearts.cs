@@ -15,16 +15,17 @@ public class KTHEARTS : MonoBehaviour
 	public SpriteRenderer nonselectableCard;
 	public Transform cardParent;
 	public KMSelectable button;
+	public TextMesh buttonText;
 	public List<TextMesh> texts;
 	public AudioClip shatter, ghostsaltCurse;
 	public KMAudio Audio;
 
 	private readonly List<string> cardCodes = new List<string>
 	{
-		"2s", "3s", "4s", "5s", "6s", "7s", "8s", "9s", "=s", "Js", "Qs", "Ks", "As",
-		"2c", "3c", "4c", "5c", "6c", "7c", "8c", "9c", "=c", "Jc", "Qc", "Kc", "Ac",
-		"2h", "3h", "4h", "5h", "6h", "7h", "8h", "9h", "=h", "Jh", "Qh", "Kh", "Ah",
-		"2d", "3d", "4d", "5d", "6d", "7d", "8d", "9d", "=d", "Jd", "Qd", "Kd", "Ad"
+		"2s", "3s", "4s", "5s", "6s", "7s", "8s", "9s", "Ts", "Js", "Qs", "Ks", "As",
+		"2c", "3c", "4c", "5c", "6c", "7c", "8c", "9c", "Tc", "Jc", "Qc", "Kc", "Ac",
+		"2h", "3h", "4h", "5h", "6h", "7h", "8h", "9h", "Th", "Jh", "Qh", "Kh", "Ah",
+		"2d", "3d", "4d", "5d", "6d", "7d", "8d", "9d", "Td", "Jd", "Qd", "Kd", "Ad"
 	};
 	
 	private List<int> raisedCards = new List<int>();
@@ -34,6 +35,17 @@ public class KTHEARTS : MonoBehaviour
 	private int startingHand = -1; // 0 - South, 1 - West, 2 - North, 3 - East.
 	private bool readyToInput;
 	private int currentState; // 0 - passing cards, 1-13 - dealing cards, 14 - results screen.
+	private int currentRound;
+	private readonly List<int> rotationTable = new List<int>{3,0,1,2,1,2,3,0,2,3,0,1};
+	private List<string> texts = new List<string>{
+		"Pass left","Pass right", "Pass across", "Continue", "Restart", "Solve", "South", "West", "North", "East", "Q", "Moon", "Sun"
+	};
+	private int ghostCard = 10;
+	private int heartsSuit = 2;
+	private List<List<int>> takenCards;
+	private List<int> points, deltaPoints;
+	private int limit = 100;
+	private bool heartsBroken;
 
 	void newHands()
 	{
@@ -42,6 +54,7 @@ public class KTHEARTS : MonoBehaviour
 			).ToList()).ToList();
 		for (int i = 0; i < moduleCards.Count; i++) moduleCards[i].sprite = i<13?cards[hands[0][i]]:back;
 		startingHand = hands.SelectMany(x => x).IndexOf(x=> x == 0) / 13;
+		deltaPoints = new List<int>{0,0,0,0};
 	}
 	void playSound(AudioClip clip){Audio.PlaySoundAtTransform(clip.name, transform);}
 	void press(int index)
@@ -61,6 +74,24 @@ public class KTHEARTS : MonoBehaviour
 		}
 	}
 
+	string playerText(int player){
+		if (state == 0) return "";
+		bool hasGhost = takenCards[player].Contains(ghostCard);
+		int amountOfHearts = takenCards[player].Count(x => x/13 == heartsSuit);
+		if (state < 14) return $"{texts[6+player]}: {hasGhost?amountOfHearts==13?texts[11]:($"{texts[10]}+{amountOfHearts.ToString}":amountOfHearts.ToString())}";
+		if (takenCards[player].Count == 52) return $"{texts[6+player]}: {texts[12]} - {points[player]} (+{deltaPoints[player]})";
+		return $"{texts[6+player]}: {hasGhost?amountOfHearts==13?texts[11]:($"{texts[10]}+{amountOfHearts.ToString}":amountOfHearts.ToString())}"
+	}
+
+	string buttonText(){
+		if (state == 0){
+			return currentRound % 4 == 3? "":texts[currentRound%4];
+		}
+		if (state == 14){
+			if ()
+		}
+	}
+
 	int raise(int index)
 	{
 		int card = hands[0][index];
@@ -74,16 +105,44 @@ public class KTHEARTS : MonoBehaviour
 		return index+1;
 	}
 
+	void startGame(){
+		state++;
+	}
+
 	void newGame()
 	{
+		points = new List<int>{0,0,0,0};
+		takenCards = new List<List<int>>{new List<int>(),new List<int>(),new List<int>(),new List<int>()};
 		texts.ForEach(x=>x.text="");
 		button.GetComponent<MeshRenderer>().material.color = Color.white / 6f;
 		newHands();
+		button.gameObject.SetActive(currentRound % 4 < 3);
+		if (currentRound % 4 == 3){
+			startGame();
+		}
 	}
 
 	void buttonPress()
 	{
 		print("Button pressed");
+		if (currentState == 0){
+			if (raisedCards.Count != 3) return;
+			raiseAndPass();
+			button.gameObject.SetActive(false);
+		}
+	}
+
+	void raiseAndPass(){
+		List<List<int>> raisedCards = new List<List<int>>{raisedCards};
+		foreach(List<int> cards in hands.Skip(1)){
+			raisedCards.Add(cards.OrderBy(x => x/13*13 + 12 - x%13).Take(3).ToList());
+		}
+		List<List<int>> newRaisedCards = new List<List<int>>{new List<int>(),new List<int>(),new List<int>(),new List<int>()};
+		for (int i=0; i<4; i++){
+			newRaisedCards[i] = raisedCards[rotationTable[currentRound%4*4+i]];
+			hands[i] = hands[i].Remove(raisedCards[i]).Append(newRaisedCards[i]);
+		}
+
 	}
 
 	void init()
@@ -173,7 +232,6 @@ public class KTHEARTS : MonoBehaviour
 	
 	void Start ()
 	{
-		//selectableCard.GetComponentInChildren<KMSelectable>().OnInteract += delegate () { print("a"); return false; };
 		init();
 		newGame();
 	}
