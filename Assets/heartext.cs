@@ -1,7 +1,7 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
 
-public static class HEARTEXT {
+public static class heartext {
     public static List<List<T>> Chunk<T>(this List<T> list, int chunkSize)
     {
         List<List<T>> ans = new List<List<T>>();

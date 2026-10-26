@@ -4,9 +4,9 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.Serialization;
-using static HEARTEXT;
+using static heartext;
 
-public class KTHEARTS : MonoBehaviour
+public class kthearts : MonoBehaviour
 {
 
 	public List<Sprite> cards;
@@ -16,7 +16,7 @@ public class KTHEARTS : MonoBehaviour
 	public Transform cardParent;
 	public KMSelectable button;
 	public TextMesh buttonText;
-	public List<TextMesh> texts;
+	public List<TextMesh> textMeshes;
 	public AudioClip shatter, ghostsaltCurse;
 	public KMAudio Audio;
 
@@ -27,12 +27,13 @@ public class KTHEARTS : MonoBehaviour
 		"2h", "3h", "4h", "5h", "6h", "7h", "8h", "9h", "Th", "Jh", "Qh", "Kh", "Ah",
 		"2d", "3d", "4d", "5d", "6d", "7d", "8d", "9d", "Td", "Jd", "Qd", "Kd", "Ad"
 	};
+
+	private string getCardCode(int index) => $"{"23456789TJQKA"[index % 13]}{"schd"[index / 13]}";
 	
 	private List<int> raisedCards = new List<int>();
 
 	private List<List<int>> hands;
 	private List<SpriteRenderer> moduleCards = new List<SpriteRenderer>();
-	private int startingHand = -1; // 0 - South, 1 - West, 2 - North, 3 - East.
 	private bool readyToInput;
 	private int currentState; // 0 - passing cards, 1-13 - dealing cards, 14 - results screen.
 	private int currentRound;
@@ -42,10 +43,14 @@ public class KTHEARTS : MonoBehaviour
 	};
 	private int ghostCard = 10;
 	private int heartsSuit = 2;
+	private int startingCard = 0;
 	private List<List<int>> takenCards;
 	private List<int> points, deltaPoints;
 	private int limit = 100;
 	private bool heartsBroken;
+	private int dealingPlayer = -1; // 0 - South, 1 - West, 2 - North, 3 - East.
+	private List<int> dealtCards;
+	
 
 	void newHands()
 	{
@@ -53,13 +58,14 @@ public class KTHEARTS : MonoBehaviour
 				y % 13 + (y / 13 * -2 + 7) % 5 * 13  // this means the order is ♣, ♦, ♠, ♥.
 			).ToList()).ToList();
 		for (int i = 0; i < moduleCards.Count; i++) moduleCards[i].sprite = i<13?cards[hands[0][i]]:back;
-		startingHand = hands.SelectMany(x => x).IndexOf(x=> x == 0) / 13;
+		dealingPlayer = hands.SelectMany(x => x).IndexOf(x=> x == startingCard) / 13;
 		deltaPoints = new List<int>{0,0,0,0};
+		heartsBroken = false;
 	}
 	void playSound(AudioClip clip){Audio.PlaySoundAtTransform(clip.name, transform);}
 	void press(int index)
 	{
-		print($"Pressed {cardCodes[hands[0][index]]}");
+		print($"Pressed {getCardCode(hands[0][index])}");
 		if (currentState == 0)
 		{
 			int card = raise(index);
@@ -71,24 +77,89 @@ public class KTHEARTS : MonoBehaviour
 				moduleCards[-++card].transform.localPosition -= new Vector3(0, 0,
 					Mathf.Abs(nonselectableCard.transform.localPosition.x) / 6f);
 			button.GetComponent<MeshRenderer>().material.color = (raisedCards.Count == 3)? Color.black: Color.white / 6f;
+
+			return;
+		}
+
+		if (currentState < 14)
+		{
+			
+		}
+	}
+	
+	int takingPlayer(int previous, List<int> thrown) => (previous + thrown.IndexOf(thrown.Where(x=>x/13 == thrown[0]/13).OrderBy(x=>x).Last()))%4;
+
+	int dealCard(int player, int thrownCard)
+	{
+		if (!hands[player].Contains(thrownCard)) return -1;
+		if (thrownCard == ghostCard) playSound(ghostsaltCurse);
+		hands[player].Remove(thrownCard);
+		dealtCards.Add(thrownCard);
+		if (!heartsBroken && thrownCard / 13 == heartsSuit)
+		{
+			heartsBroken = true;
+			playSound(shatter);
+		}
+		if (dealtCards.Count != 4) return (player + 1) % 4;
+		int ans = takingPlayer(dealingPlayer, dealtCards);
+		takenCards[ans].AddRange(dealtCards);
+		dealtCards.Clear();
+		return ans;
+	}
+
+	List<int> allowedCards(List<int> thrown, List<int> hand)
+	{
+		if (thrown.Count == 0)
+		{
+			if (heartsBroken) return hand.ToList();
+			List<int> midList = hand.Where(x => !(x/13 == heartsSuit || x!=ghostCard)).ToList();
+			if (midList.Count == 0) return hand.ToList();
+			return midList;
+		}
+		else
+		{
+			int startingSuit = thrown[0] / 13;
+			if (currentState == 1)
+			{
+				List<int> midList = hand.Where(x => x/13 == startingSuit && x!=ghostCard && x/13!=heartsSuit).ToList();
+				if (midList.Count != 0) return midList;
+				midList = hand.Where(x => x!=ghostCard && x/13!=heartsSuit).ToList();
+				if (midList.Count != 0) return midList;
+				midList = hand.Where(x => x/13!=heartsSuit).ToList();
+				if (midList.Count != 0) return midList;
+				return hand;
+			}
+			else
+			{
+				List<int> midList = hand.Where(x => x/13 == startingSuit).ToList();
+				if (midList.Count == 0) return hand.ToList();
+				return midList;
+			}
 		}
 	}
 
-	string playerText(int player){
-		if (state == 0) return "";
+	string getPlayerText(int player){
+		if (currentState == 0) return "";
 		bool hasGhost = takenCards[player].Contains(ghostCard);
 		int amountOfHearts = takenCards[player].Count(x => x/13 == heartsSuit);
-		if (state < 14) return $"{texts[6+player]}: {hasGhost?amountOfHearts==13?texts[11]:($"{texts[10]}+{amountOfHearts.ToString}":amountOfHearts.ToString())}";
+		if (currentState < 14) return texts[6+player] + ": " + (hasGhost
+			? (amountOfHearts == 13 ? texts[11] : texts[10] + "+" + amountOfHearts)
+			: amountOfHearts.ToString());
 		if (takenCards[player].Count == 52) return $"{texts[6+player]}: {texts[12]} - {points[player]} (+{deltaPoints[player]})";
-		return $"{texts[6+player]}: {hasGhost?amountOfHearts==13?texts[11]:($"{texts[10]}+{amountOfHearts.ToString}":amountOfHearts.ToString())}"
+		return texts[6+player] + ": " + (hasGhost
+			          ? (amountOfHearts == 13 ? texts[11] : texts[10] + "+" + amountOfHearts)
+			          : amountOfHearts.ToString()) + $" - {points[player]} (+{deltaPoints[player]})\"";
 	}
 
-	string buttonText(){
-		if (state == 0){
-			return currentRound % 4 == 3? "":texts[currentRound%4];
-		}
-		if (state == 14){
-			if ()
+	string getButtonText(){
+		switch (currentState)
+		{
+			case 0:
+				return currentRound % 4 == 3? "":texts[currentRound%4];
+			case 14:
+				return points.Count(x => x >= limit) == 0 ? texts[3] : points[0] >= limit ? texts[4] : texts[5];
+			default:
+				return "";
 		}
 	}
 
@@ -106,14 +177,14 @@ public class KTHEARTS : MonoBehaviour
 	}
 
 	void startGame(){
-		state++;
+		currentState++;
 	}
 
 	void newGame()
 	{
 		points = new List<int>{0,0,0,0};
 		takenCards = new List<List<int>>{new List<int>(),new List<int>(),new List<int>(),new List<int>()};
-		texts.ForEach(x=>x.text="");
+		textMeshes.ForEach(x=>x.text="");
 		button.GetComponent<MeshRenderer>().material.color = Color.white / 6f;
 		newHands();
 		button.gameObject.SetActive(currentRound % 4 < 3);
@@ -133,14 +204,12 @@ public class KTHEARTS : MonoBehaviour
 	}
 
 	void raiseAndPass(){
-		List<List<int>> raisedCards = new List<List<int>>{raisedCards};
-		foreach(List<int> cards in hands.Skip(1)){
-			raisedCards.Add(cards.OrderBy(x => x/13*13 + 12 - x%13).Take(3).ToList());
-		}
+		List<List<int>> raisedCardsAll = new List<List<int>>{raisedCards};
+		raisedCardsAll.AddRange(hands.Skip(1).Select(y => y.OrderBy(x => x / 13 * 13 + 12 - x % 13).Take(3).ToList()));
 		List<List<int>> newRaisedCards = new List<List<int>>{new List<int>(),new List<int>(),new List<int>(),new List<int>()};
 		for (int i=0; i<4; i++){
-			newRaisedCards[i] = raisedCards[rotationTable[currentRound%4*4+i]];
-			hands[i] = hands[i].Remove(raisedCards[i]).Append(newRaisedCards[i]);
+			newRaisedCards[i] = raisedCardsAll[rotationTable[currentRound%4*4+i]];
+			hands[i] = hands[i].Remove(raisedCardsAll[i]).Append(newRaisedCards[i]);
 		}
 
 	}
