@@ -1,10 +1,8 @@
-﻿using System;
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using UnityEngine;
-using UnityEngine.Serialization;
-using static heartext;
 
 public class kthearts : MonoBehaviour
 {
@@ -28,9 +26,7 @@ public class kthearts : MonoBehaviour
 	};
 
 	private string getCardCode(int index) => $"{"23456789TJQKA"[index % 13]}{"schd"[index / 13]}";
-	
 	private List<int> raisedCards = new List<int>();
-
 	private List<List<int>> hands;
 	private List<SpriteRenderer> moduleCards = new List<SpriteRenderer>();
 	private bool readyToInput;
@@ -42,7 +38,7 @@ public class kthearts : MonoBehaviour
 	};
 	private int ghostCard = 10;
 	private int heartsSuit = 2;
-	private int startingCard = 0;
+	private int startingCard = 13;
 	private List<List<int>> takenCards;
 	private List<int> points, deltaPoints;
 	private int limit = 100;
@@ -52,25 +48,26 @@ public class kthearts : MonoBehaviour
 	private List<SpriteRenderer> dealtCardRenders;
 	private float localStartingY;
 	private bool ModuleSolved;
+	private Coroutine currentCoroutine;
 
+	private static int ModuleIdCounter;
+	private int ModuleId;
+	void log(string msg){Debug.Log($"[KTHearts #{ModuleId}] {msg}");}
+	void Awake(){ModuleId = ++ModuleIdCounter;}
 	void newHands()
 	{
 		hands = Enumerable.Range(0,52).ToList().Shuffle().ToList().Chunk(13);
 		hands[0] = hands[0].OrderBy(y=>
 				y % 13 + (y / 13 * -2 + 7) % 5 * 13  // this means the order is ♣, ♦, ♠, ♥.
 			).ToList();
-		for (int i = 0; i < moduleCards.Count; i++) moduleCards[i].sprite = i<13?cards[hands[0][i]]:back;
+		for (int i = 0; i < moduleCards.Count; i++) moduleCards[i].sprite = i<13?cards[hands[i/13][i%13]]:back;
 		moduleCards.ForEach(x=>x.gameObject.SetActive(true));
-		dealingPlayer = hands.SelectMany(x => x).IndexOf(x=> x == startingCard) / 13;
-		deltaPoints = new List<int>{0,0,0,0};
-		heartsBroken = false;
-		readyToInput = false;
 	}
 	void playSound(AudioClip clip){GetComponent<KMAudio>().PlaySoundAtTransform(clip.name, transform);}
 	void press(int index)
 	{
 		if (ModuleSolved) return;
-		print($"Pressed {getCardCode(hands[0][index])}");
+		//log($"Pressed {getCardCode(hands[0][index])}");
 		if (currentState == 0)
 		{
 			markCard(raise(index));
@@ -79,8 +76,9 @@ public class kthearts : MonoBehaviour
 		}
 		if (currentState < 14)
 		{
-			if (!readyToInput) return;
-			else continueGame(index);
+			if (!readyToInput || !allowedCards(dealtCards,hands[0]).Contains(hands[0][index])) return;
+			StopCoroutine(currentCoroutine);
+			currentCoroutine = StartCoroutine(continueGame(index));
 		}
 	}
 
@@ -88,49 +86,61 @@ public class kthearts : MonoBehaviour
 		if (card == 0) return;
 			if (card > 0) 
 				moduleCards[--card].transform.localPosition += new Vector3(0, 0,
-					Mathf.Abs(nonselectableCard.transform.localPosition.x) / 6f);
+					Mathf.Abs(selectableCard.transform.localPosition.x) / 6f);
 			else 
 				moduleCards[-++card].transform.localPosition -= new Vector3(0, 0,
-					Mathf.Abs(nonselectableCard.transform.localPosition.x) / 6f);
+					Mathf.Abs(selectableCard.transform.localPosition.x) / 6f);
 	}
 
 	//very simple and dumb bot algorithm, i think i'll improve it later
-	int prefferedCard(List<int> thrownCards, List<int> legalCards){
+	int preferredCard(List<int> thrownCards, List<int> legalCards){
 		if (legalCards.Count == 1) return legalCards[0];
 		if (legalCards.Contains(ghostCard))
-			if (thrownCards.Count > 0 && (thrownCards[0] / 13 != ghostCard / 13 || thrownCards.Count(x => x / 13 == ghostCard / 13 && x > ghostCard).Count > 0)) return ghostCard;
+			if (thrownCards.Count > 0 && (thrownCards[0] / 13 != ghostCard / 13 || thrownCards.Count(x => x / 13 == ghostCard / 13 && x > ghostCard) > 0)) return ghostCard;
 		if (thrownCards.Count > 0) return legalCards.Where(x => x!=ghostCard).OrderByDescending(x=>x%13).First();
 		else return legalCards.Where(x => x!=ghostCard).OrderBy(x=>x%13).First();
 	}
-	
-	int takingPlayer(int previous, List<int> thrown) => (previous + thrown.IndexOf(thrown.Where(x=>x/13 == thrown[0]/13).OrderBy(x=>x).Last()))%4;
 
-	int dealCard(int player, int thrownCard)
+	int takingPlayer(int previous, List<int> thrown) => (previous + thrown.IndexOf(thrown.Where(x => x / 13 == thrown[0] / 13).OrderBy(x => x).Last())) % 4;
+	//{
+	//	int ans = (previous + thrown.IndexOf(thrown.Where(x => x / 13 == thrown[0] / 13).OrderBy(x => x).Last())) % 4;
+	//	log($"takingPlayer({previous}, [{thrown.Select(getCardCode).Aggregate((a,b)=>$"{a}, {b}")}]):\n" +
+	//	      $"thrown.Where(x => x / 13 == thrown[0] / 13).OrderBy(x => x) = {thrown.Where(x => x / 13 == thrown[0] / 13).OrderBy(x => x).Select(getCardCode).Aggregate((a,b)=>$"{a}, {b}")}\n" +
+	//	      $"Index of last: {thrown.IndexOf(thrown.Where(x => x / 13 == thrown[0] / 13).OrderBy(x => x).Last())}\n" +
+	//	      $"Answer: {ans}");
+	//	return ans;
+	//}
+
+	IEnumerator dealCard(int player, int thrownCard)
 	{
-		if (!hands[player].Contains(thrownCard)) return -1;
+		//if (!hands[player].Contains(thrownCard)) return -1;
+		log($"Dealing {getCardCode(thrownCard)} as {texts[6+player]}.");
 		if (thrownCard == ghostCard) playSound(ghostsaltCurse);
-		hands[player] = hands[player].Replace(thrownCard, -1);
 		moduleCards[13*player + hands[player].IndexOf(thrownCard)].gameObject.SetActive(false);
 		dealtCards.Add(thrownCard);
+		hands[player] = hands[player].Replace(thrownCard, -1);
 		if (!heartsBroken && thrownCard / 13 == heartsSuit)
 		{
 			heartsBroken = true;
 			playSound(shatter);
 		}
+		dealtCardRenders[player].sprite = cards[thrownCard];
+		dealtCardRenders[player].transform.localPosition = new Vector3(
+			dealtCardRenders[player].transform.localPosition.x,
+			dealtCardRenders[(player + 3) % 4].transform.localPosition.y + 0.00003f,
+			dealtCardRenders[player].transform.localPosition.z
+		);
+		dealtCardRenders[player].gameObject.SetActive(true);
+		yield return new WaitForSeconds(0.2f);
 		if (dealtCards.Count != 4) {
-			dealtCardRenders[player].sprite = cards[thrownCard];
-			dealtCardRenders[player].transform.localPosition = new Vector3(
-				dealtCardRenders[player].transform.localPosition.x,
-				dealtCardRenders[(player+3)%4].transform.localPosition + 0.00003f
-				dealtCardRenders[player].transform.localPosition.z
-			)
-			dealtCardRenders[player].gameObject.SetActive(true);
-			return (player + 1) % 4;
+			dealingPlayer = (player + 1) % 4;
+			yield break;
 		}
-		int ans = takingPlayer(dealingPlayer, dealtCards);
+		int ans = takingPlayer((dealingPlayer + 1)%4, dealtCards);
 		takenCards[ans].AddRange(dealtCards);
 		dealtCards.Clear();
-		dealtCardRenders.ForEach(x => x.transfrom.localPosition = new Vector3(
+		yield return new WaitForSeconds(0.5f);
+		dealtCardRenders.ForEach(x => x.transform.localPosition = new Vector3(
 			x.transform.localPosition.x,
 			localStartingY,
 			x.transform.localPosition.z
@@ -138,15 +148,21 @@ public class kthearts : MonoBehaviour
 		dealtCardRenders.ForEach(x => x.gameObject.SetActive(false));
 		currentState++;
 		for (int i=0; i<4; i++) textMeshes[i].text = getPlayerText(i);
-		return ans;
+		log($"{texts[6+ans]} takes.");
+		dealingPlayer = ans;
 	}
 
 	List<int> allowedCards(List<int> thrown, List<int> hand){
 		hand = hand.Where(x => x!=-1).ToList();
 		if (thrown.Count == 0)
 		{
+			if (currentState == 1)
+			{
+				if (hand.Contains(startingCard)) return new List<int> { startingCard };
+				return hand;
+			}
 			if (heartsBroken) return hand;
-			List<int> midList = hand.Where(x => !(x/13 == heartsSuit || x!=ghostCard)).ToList();
+			List<int> midList = hand.Where(x => x/13 != heartsSuit && x!=ghostCard).ToList();
 			if (midList.Count == 0) return hand;
 			return midList;
 		}
@@ -181,7 +197,7 @@ public class kthearts : MonoBehaviour
 		if (takenCards[player].Count == 52) return $"{texts[6+player]}: {texts[12]} - {points[player]} (+{deltaPoints[player]})";
 		return texts[6+player] + ": " + (hasGhost
 			          ? (amountOfHearts == 13 ? texts[11] : texts[10] + "+" + amountOfHearts)
-			          : amountOfHearts.ToString()) + $" - {points[player]} (+{deltaPoints[player]})\"";
+			          : amountOfHearts.ToString()) + $" - {points[player]} (+{deltaPoints[player]})";
 	}
 	string getButtonText(){
 		switch (currentState)
@@ -194,7 +210,6 @@ public class kthearts : MonoBehaviour
 				return "";
 		}
 	}
-
 	int raise(int index)
 	{
 		int card = hands[0][index];
@@ -208,65 +223,77 @@ public class kthearts : MonoBehaviour
 		return index+1;
 	}
 
-	void continueGame(int selectedCard){
+	IEnumerator continueGame(int selectedCard){
 		readyToInput = false;
-		if (selectedCard != -1) dealCard(0, hands[0][selectedCard]);
-		while (dealingPlayer!=0 && state!=14) dealingPlayer = dealCard(dealingPlayer, prefferedCard(dealtCards, allowedCards(dealtCards, hands[dealingPlayer])));
-		if (state!=14) {
+		if (selectedCard != -1) yield return dealCard(0, hands[0][selectedCard]);
+		while (dealingPlayer!=0 && currentState!=14) yield return dealCard(dealingPlayer, preferredCard(dealtCards, allowedCards(dealtCards, hands[dealingPlayer])));
+		if (currentState!=14) {
 			readyToInput = true;
-			}
+		}
 		else renderState14();
 	}
 
-	void renderState14(){
-		if (Enumerable.Range(0,4).Where(i=>takenCards[i].Count()==52).Count > 0){ //sunshot
-			int shooter = Enumerable.Range(0,4).Where(i=>takenCards[i].Count()==52).First();
+	void renderState14()
+	{
+		StopCoroutine(currentCoroutine);
+		currentCoroutine = null;
+		button.GetComponent<MeshRenderer>().material.color = Color.black;
+		if (Enumerable.Range(0,4).Any(i => takenCards[i].Count==52)){ //sunshot
+			int shooter = Enumerable.Range(0,4).First(i => takenCards[i].Count()==52);
 			deltaPoints = Enumerable.Range(0,4).Select(x => x==shooter?0:52).ToList();
 		}
-		else if (Enumerable.Range(0,4).Where(i=>takenCards[i].Count(x => x/13 == heartsSuit)==13 && takenCards[i].Contains(ghostCard)).Count > 0){ //moonshot
-			int shooter = Enumerable.Range(0,4).Where(i=>takenCards[i].Count(x => x/13 == heartsSuit)==13 && takenCards[i].Contains(ghostCard)).First();
+		else if (Enumerable.Range(0,4).Any(i => takenCards[i].Count(x => x/13 == heartsSuit)==13 && takenCards[i].Contains(ghostCard))){ //moonshot
+			int shooter = Enumerable.Range(0,4).First(i => takenCards[i].Count(x => x/13 == heartsSuit)==13 && takenCards[i].Contains(ghostCard));
 			deltaPoints = Enumerable.Range(0,4).Select(x => x==shooter?0:26).ToList();
 		}
 		else{
-			deltaPoints = Enumberable.Range(0,4).Select(i=>(takenCards[i].Contains(ghostCard)?13:0)+takenCards[i].Count(x=>x/13==heartsSuit)).ToList();
+			deltaPoints = Enumerable.Range(0,4).Select(i=>(takenCards[i].Contains(ghostCard)?13:0)+takenCards[i].Count(x=>x/13==heartsSuit)).ToList();
 		}
 		points = points.Select((x,i)=>x+deltaPoints[i]).ToList();
 		buttonText.text = getButtonText();
-		button.gameObject.SetEnabled(true);
+		button.gameObject.SetActive(true);
 		for (int i=0; i<4; i++) textMeshes[i].text = getPlayerText(i);
 	}
 
 	void newGame()
 	{
 		points = new List<int>{0,0,0,0};
-		renderState0()
+		renderState0();
 	}
 
 	void renderState0(){
 		dealingPlayer = -1;
 		takenCards = new List<List<int>>{new List<int>(),new List<int>(),new List<int>(),new List<int>()};
+		raisedCards = new List<int>();
 		textMeshes.ForEach(x=>x.text="");
+		buttonText.text = getButtonText();
 		button.GetComponent<MeshRenderer>().material.color = Color.white / 6f;
+		dealtCards = new List<int>();
 		newHands();
+		dealingPlayer = hands.SelectMany(x => x).IndexOf(x=> x == startingCard) / 13;
+		deltaPoints = new List<int>{0,0,0,0};
+		heartsBroken = false;
+		readyToInput = false;
 		button.gameObject.SetActive(currentRound % 4 < 3);
 		if (currentRound % 4 == 3){
 			currentState++;
 			for (int i=0; i<4; i++) textMeshes[i].text = getPlayerText(i);
-			continueGame(-1);
+			if (currentCoroutine!=null) StopCoroutine(currentCoroutine);
+			currentCoroutine = StartCoroutine(continueGame(-1));
 		}
 	}
 
-	void buttonPress()
+	IEnumerator buttonPress()
 	{
-		if (ModuleSolved) return;
-		print("Button pressed");
+		if (ModuleSolved) yield break;
+		log("Button pressed");
 		if (currentState == 0){
-			if (raisedCards.Count != 3) return;
-			raiseAndPass();
+			if (raisedCards.Count != 3) yield break;
 			button.gameObject.SetActive(false);
 			currentState++;
 			for (int i=0; i<4; i++) textMeshes[i].text = getPlayerText(i);
-			continueGame(-1);
+			yield return raiseAndPass();
+			yield return continueGame(-1);
 		}
 		if (currentState == 14){
 			currentState = 0;
@@ -278,32 +305,36 @@ public class kthearts : MonoBehaviour
 				currentRound = 0;
 				newGame();
 			}
-			else GetComponent<KMBombModule>().HandlePass();
+			else
+			{
+				ModuleSolved = true;
+				GetComponent<KMBombModule>().HandlePass();
+			}
 		}
 	}
 
-	void raiseAndPass(){
-		raisedCards.ForEach(x=> markCard(-x-1));
+	IEnumerator raiseAndPass(){
+		raisedCards.Select(x => hands[0].IndexOf(x)).ToList().ForEach(x=> markCard(-x-1));
 		List<List<int>> raisedCardsAll = new List<List<int>>{raisedCards};
 		raisedCardsAll.AddRange(hands.Skip(1).Select(y => y.OrderBy(x => x / 13 * 13 + 12 - x % 13).Take(3).ToList()));
 		List<List<int>> newRaisedCards = new List<List<int>>{new List<int>(),new List<int>(),new List<int>(),new List<int>()};
 		for (int i=0; i<4; i++){
-			newRaisedCards[i] = raisedCardsAll[rotationTable[currentRound%4*4+i]];
+			newRaisedCards[i] = raisedCardsAll[rotationTable[currentRound%4*4+i]].ToList();
 			hands[i] = hands[i].Remove(raisedCardsAll[i]).Append(newRaisedCards[i]);
 		}
-		//raisedCards = newRaisedCards[0].ToList();
-		//raisedCards.ForEach(x=> markCard(x+1));
-		hands[0] = hands[0].OrderBy(y=>
-			y % 13 + (y / 13 * -2 + 7) % 5 * 13  // this means the order is ♣, ♦, ♠, ♥.
-		).ToList();
-		for (int i = 0; i < 13; i++) moduleCards[0].sprite = cards[hands[0][i]];
+		hands[0] = hands[0].OrderBy(y=> y % 13 + (y / 13 * -2 + 7) % 5 * 13).ToList();
+		for (int i = 0; i < moduleCards.Count; i++) moduleCards[i].sprite = i<13?cards[hands[i/13][i%13]]:back;
+		raisedCards = newRaisedCards[0].Select(x=>hands[0].IndexOf(x)).ToList();
+		raisedCards.ForEach(x=> markCard(x+1));
+		yield return new WaitForSeconds(1f);
+		raisedCards.ForEach(x=> markCard(-x-1));
 	}
 
 	void init()
 	{
 		button.OnInteract += delegate
 		{
-			buttonPress();
+			currentCoroutine = StartCoroutine(buttonPress());
 			return false;
 		};
 		moduleCards.Add(selectableCard);
@@ -331,7 +362,7 @@ public class kthearts : MonoBehaviour
 		};
 		GetComponent<KMSelectable>().Children = moduleCards.Select(x=>x.GetComponentInChildren<KMSelectable>()).ToList().Append(button).ToArray();
 		GetComponent<KMSelectable>().UpdateChildrenProperly();
-		
+		dealtCardRenders = new List<SpriteRenderer>();
 		for (int i = 0; i < 13; i++)
 		{
 			SpriteRenderer newCard = Instantiate(nonselectableCard, cardParent);
@@ -408,5 +439,36 @@ public class kthearts : MonoBehaviour
 	{
 		init();
 		newGame();
+	}
+
+	private string TwitchHelpMessage =
+		"Use !{0} pass <card> <card> <card> to pass three cards. Use !{0} continue to press the button after emptying hand. " +
+		"Use !{0} <card> to deal a card from your hand.";
+
+	private IEnumerator ProcessTwitchCommand(string command)
+	{
+		yield return null;
+		command = command.ToLowerInvariant().Trim();
+		if (currentState == 14)
+		{
+			if (command == "continue")
+			{
+				yield return "solve";
+				yield return buttonPress();
+			}
+			else yield return "sendtochaterror Invalid command.";
+			yield break;
+		}
+
+		if (currentState == 0)
+		{
+			List<string> parameters = command.Split(' ').Where(x => x != "").ToList();
+			if (parameters.Count != 4 || parameters[0] != "continue" || parameters.Skip(1).Any(x => !Regex.IsMatch(x,"^((([0-9jqkta=]|(10))([schd]))|(([schd])([0-9jqkta=]|(10))))$"))) 
+			{
+				yield return "sendtochaterror Invalid command.";
+				yield break;
+			}
+			
+		}
 	}
 }

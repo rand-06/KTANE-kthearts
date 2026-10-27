@@ -306,7 +306,7 @@ Transform:
   m_PrefabInternal: {fileID: 100100000}
   m_GameObject: {fileID: 1802863595687336}
   m_LocalRotation: {x: 0.7071068, y: -0, z: -0, w: 0.7071068}
-  m_LocalPosition: {x: -0.0314, y: 0.0009999992, z: -0.0634}
+  m_LocalPosition: {x: 0, y: 0.0009999992, z: -0.015}
   m_LocalScale: {x: 0.03467159, y: 0.034671593, z: 0.034671593}
   m_Children: []
   m_Father: {fileID: 4185664184117048}
@@ -344,13 +344,13 @@ Transform:
   m_PrefabParentObject: {fileID: 0}
   m_PrefabInternal: {fileID: 100100000}
   m_GameObject: {fileID: 1460161563599406}
-  m_LocalRotation: {x: -0, y: -1, z: -0, w: 0.0000027500814}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 0.73358643, y: 0.97423637, z: 0.043409705}
+  m_LocalRotation: {x: 0, y: 0.7071068, z: -0.7071068, w: 0}
+  m_LocalPosition: {x: 0, y: 3.2021132e-15, z: 0.000000023503617}
+  m_LocalScale: {x: 0.73358643, y: 0.04340971, z: 0.9742364}
   m_Children: []
   m_Father: {fileID: 4936027818639468}
   m_RootOrder: 0
-  m_LocalEulerAnglesHint: {x: 0, y: -180.00002, z: 0}
+  m_LocalEulerAnglesHint: {x: 90, y: 180, z: 0}
 --- !u!4 &4730771773023784
 Transform:
   m_ObjectHideFlags: 1
@@ -1015,7 +1015,6 @@ MonoBehaviour:
   - {fileID: 102799724546912244}
   shatter: {fileID: 8300000, guid: 1626c323c9a694d47b7e0f9766442781, type: 3}
   ghostsaltCurse: {fileID: 8300000, guid: fa5940d354ac5134d8b5fb496d682b8f, type: 3}
-  Audio: {fileID: 114663060378266986}
 --- !u!114 &114556098701798564
 MonoBehaviour:
   m_ObjectHideFlags: 1
