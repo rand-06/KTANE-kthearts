@@ -26,4 +26,11 @@ public static class heartext {
     public static List<T> Remove<T>(this List<T> list, List<T> elementsToRemove){
         return list.Where(x => !elementsToRemove.Contains(x)).ToList();
     }
+    public static List<T> Replace<T>(this List<T> list, T query, T replacement){
+        int index = list.IndexOf(query);
+        if (index == -1) return list;
+        List<T> listCopy = list.ToList();
+        listCopy[index] = replacement;
+        return listCopy;
+    }
 }
