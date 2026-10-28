@@ -49,7 +49,7 @@ public class kthearts : MonoBehaviour
 	private float localStartingY;
 	private bool ModuleSolved;
 	private Coroutine currentCoroutine;
-
+	private bool TwitchPlaysActive;
 	private static int ModuleIdCounter;
 	private int ModuleId;
 	void log(string msg){Debug.Log($"[KTHearts #{ModuleId}] {msg}");}
@@ -77,7 +77,7 @@ public class kthearts : MonoBehaviour
 		if (currentState < 14)
 		{
 			if (!readyToInput || !allowedCards(dealtCards,hands[0]).Contains(hands[0][index])) return;
-			StopCoroutine(currentCoroutine);
+			if (currentCoroutine != null && !TwitchPlaysActive) StopCoroutine(currentCoroutine);
 			currentCoroutine = StartCoroutine(continueGame(index));
 		}
 	}
@@ -138,6 +138,8 @@ public class kthearts : MonoBehaviour
 		}
 		int ans = takingPlayer((dealingPlayer + 1)%4, dealtCards);
 		takenCards[ans].AddRange(dealtCards);
+		yield return
+			$"sendtochat Dealt cards were: {dealtCards.Select(getCardCode).Aggregate((a, b) => $"{a}, {b}")}, starting from {texts[6 + (dealingPlayer + 1) % 4]}. {texts[6 + ans]} takes.";
 		dealtCards.Clear();
 		yield return new WaitForSeconds(0.5f);
 		dealtCardRenders.ForEach(x => x.transform.localPosition = new Vector3(
@@ -229,13 +231,25 @@ public class kthearts : MonoBehaviour
 		while (dealingPlayer!=0 && currentState!=14) yield return dealCard(dealingPlayer, preferredCard(dealtCards, allowedCards(dealtCards, hands[dealingPlayer])));
 		if (currentState!=14) {
 			readyToInput = true;
+			if (TwitchPlaysActive)
+			{
+				if (dealtCards.Count == 0) yield return $"sendtochat No dealt cards yet. South moves.";
+				else yield return $"sendtochat Dealt cards are: {dealtCards.Select(getCardCode).Aggregate((a, b) => $"{a}, {b}")}, starting from {texts[6 + (dealingPlayer + 1) % 4]}. South moves.";
+				if (allowedCards(dealtCards, hands[dealingPlayer]).Count == 1)
+				{
+					int deal = allowedCards(dealtCards, hands[dealingPlayer]).First();
+					yield return
+						$"sendtochat It seems that there's only one legal move. Dealing {getCardCode(deal)} for South.";
+					yield return continueGame(hands[0].IndexOf(deal));
+				}
+			}
 		}
 		else renderState14();
 	}
 
 	void renderState14()
 	{
-		StopCoroutine(currentCoroutine);
+		if (currentCoroutine != null && !TwitchPlaysActive) StopCoroutine(currentCoroutine);
 		currentCoroutine = null;
 		button.GetComponent<MeshRenderer>().material.color = Color.black;
 		if (Enumerable.Range(0,4).Any(i => takenCards[i].Count==52)){ //sunshot
@@ -278,7 +292,7 @@ public class kthearts : MonoBehaviour
 		if (currentRound % 4 == 3){
 			currentState++;
 			for (int i=0; i<4; i++) textMeshes[i].text = getPlayerText(i);
-			if (currentCoroutine!=null) StopCoroutine(currentCoroutine);
+			if (currentCoroutine != null && !TwitchPlaysActive) StopCoroutine(currentCoroutine);
 			currentCoroutine = StartCoroutine(continueGame(-1));
 		}
 	}
@@ -443,7 +457,8 @@ public class kthearts : MonoBehaviour
 
 	private string TwitchHelpMessage =
 		"Use !{0} pass <card> <card> <card> to pass three cards. Use !{0} continue to press the button after emptying hand. " +
-		"Use !{0} <card> to deal a card from your hand. Examples of cards: 8s, h9, DK, Qc, 0h, c10, H=, td, 1s. (0, 1, 10, T or = means ten of any suit)";
+		"Use !{0} <card> to deal a card from your hand. Examples of cards: 8s, h9, DK, Qc, 0h, c10, H=, td, 1s. (0, 1, 10, T or = means ten of any suit)" +
+		"Use !{0} hand to print out your current hand.";
 
 	private IEnumerator ProcessTwitchCommand(string command)
 	{
@@ -460,24 +475,29 @@ public class kthearts : MonoBehaviour
 			yield break;
 		}
 
+		if (command == "hand")
+		{
+			yield return $"sendtochat KTHearts: Your hand is: {hands[0].Where(x => x!=-1).Select(getCardCode).Aggregate((a,b)=>$"{a}, {b}")}.";
+			yield break;
+		}
 		if (currentState == 0)
 		{
 			List<string> parameters = command.Split(' ').Where(x => x != "").ToList();
-			if (parameters.Count != 4 || parameters[0] != "continue" || parameters.Skip(1).Any(x => !Regex.IsMatch(x,"^([\djqkta=]|10)[schd]|[schd]([\djqkta=]|10)$"))) 
+			if (parameters.Count != 4 || parameters[0] != "pass" || parameters.Skip(1).Any(x => !Regex.IsMatch(x,"^([\\djqkta=]|10)[schd]|[schd]([\\djqkta=]|10)$"))) 
 			{
 				yield return "sendtochaterror Invalid command.";
 				yield break;
 			}
-			List<int> cardsToDealTP = new List(){0,0,0};
+			List<int> cardsToDealTP = new List<int>(){0,0,0};
 			string value, suit;
 			for (int i = 1; i<4; i++){
-				if (Regex.IsMatch(parameters[i],"^([\djqkta=]|10)[schd]$")){
-					value = Regex.Match(parameters[i],"^([\djqkta=]|10)([schd])$").Groups[1].Value;
-					suit = Regex.Match(parameters[i],"^([\djqkta=]|10)([schd])$").Groups[2].Value;
+				if (Regex.IsMatch(parameters[i],"^([\\djqkta=]|10)[schd]$")){
+					value = Regex.Match(parameters[i],"^([\\djqkta=]|10)([schd])$").Groups[1].Value;
+					suit = Regex.Match(parameters[i],"^([\\djqkta=]|10)([schd])$").Groups[2].Value;
 				}
-				else if (Regex.IsMatch(parameters[i],"^[schd]([\djqkta=]|10)$")){
-					value = Regex.Match(parameters[i],"^([schd])([\djqkta=]|10)$").Groups[2].Value;
-					suit = Regex.Match(parameters[i],"^([schd])([\djqkta=]|10)$").Groups[1].Value;
+				else if (Regex.IsMatch(parameters[i],"^[schd]([\\djqkta=]|10)$")){
+					value = Regex.Match(parameters[i],"^([schd])([\\djqkta=]|10)$").Groups[2].Value;
+					suit = Regex.Match(parameters[i],"^([schd])([\\djqkta=]|10)$").Groups[1].Value;
 				}
 				else{
 					yield return "sendtochaterror Invalid command.";
@@ -515,6 +535,68 @@ public class kthearts : MonoBehaviour
 					yield return $"sendtochaterror You dont have {getCardCode(cardsToDealTP[i-1])} in your hand."; yield break;
 				}
 			}
+			foreach (int x in raisedCards) markCard(-hands[0].IndexOf(x)-1);
+			raisedCards.Clear();
+			foreach (int x in cardsToDealTP) press(hands[0].IndexOf(x));
+			yield return buttonPress();
+			//yield return "sendtochat Test";
+			yield break;
+		}
+
+		if (currentState != 0)
+		{
+			if (!Regex.IsMatch(command,"^([\\djqkta=]|10)[schd]|[schd]([\\djqkta=]|10)$")) 
+			{
+				yield return "sendtochaterror Invalid command.";
+				yield break;
+			}
+
+			int cardToDeal = 0;
+			string value, suit;
+				if (Regex.IsMatch(command,"^([\\djqkta=]|10)[schd]$")){
+					value = Regex.Match(command,"^([\\djqkta=]|10)([schd])$").Groups[1].Value;
+					suit = Regex.Match(command,"^([\\djqkta=]|10)([schd])$").Groups[2].Value;
+				}
+				else if (Regex.IsMatch(command,"^[schd]([\\djqkta=]|10)$")){
+					value = Regex.Match(command,"^([schd])([\\djqkta=]|10)$").Groups[2].Value;
+					suit = Regex.Match(command,"^([schd])([\\djqkta=]|10)$").Groups[1].Value;
+				}
+				else{
+					yield return "sendtochaterror Invalid command.";
+					yield break;
+				}
+				switch (suit){
+					case "s": cardToDeal += 0; break;
+					case "c": cardToDeal += 13; break;
+					case "h": cardToDeal += 26; break;
+					case "d": cardToDeal += 39; break;
+					default: yield return "sendtochaterror Invalid command."; yield break;
+				}
+				switch (value){
+					case "2": cardToDeal+=0; break;
+					case "3": cardToDeal+=1; break;
+					case "4": cardToDeal+=2; break;
+					case "5": cardToDeal+=3; break;
+					case "6": cardToDeal+=4; break;
+					case "7": cardToDeal+=5; break;
+					case "8": cardToDeal+=6; break;
+					case "9": cardToDeal+=7; break;
+					case "j": cardToDeal+=9; break;
+					case "q": cardToDeal+=10; break;
+					case "k": cardToDeal+=11; break;
+					case "a": cardToDeal+=12; break;
+					case "1":
+					case "0":
+					case "10":
+					case "t":
+					case "=":
+						 cardToDeal+=8; break;
+					default: yield return "sendtochaterror Invalid command."; yield break;
+				}
+				if (!hands[0].Contains(cardToDeal)){
+					yield return $"sendtochaterror You dont have {getCardCode(cardToDeal)} in your hand."; yield break;
+				}
+				press(hands[0].IndexOf(cardToDeal));
 		}
 	}
 }

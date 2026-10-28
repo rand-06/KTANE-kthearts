@@ -1,0 +1,10 @@
+{
+  "name": "KTHEARTS-Editor",
+  "references": [
+    "KTHEARTS"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": []
+}
