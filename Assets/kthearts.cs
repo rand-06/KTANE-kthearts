@@ -443,7 +443,7 @@ public class kthearts : MonoBehaviour
 
 	private string TwitchHelpMessage =
 		"Use !{0} pass <card> <card> <card> to pass three cards. Use !{0} continue to press the button after emptying hand. " +
-		"Use !{0} <card> to deal a card from your hand.";
+		"Use !{0} <card> to deal a card from your hand. Examples of cards: 8s, h9, DK, Qc, 0h, c10, H=, td, 1s. (0, 1, 10, T or = means ten of any suit)";
 
 	private IEnumerator ProcessTwitchCommand(string command)
 	{
@@ -463,12 +463,58 @@ public class kthearts : MonoBehaviour
 		if (currentState == 0)
 		{
 			List<string> parameters = command.Split(' ').Where(x => x != "").ToList();
-			if (parameters.Count != 4 || parameters[0] != "continue" || parameters.Skip(1).Any(x => !Regex.IsMatch(x,"^((([0-9jqkta=]|(10))([schd]))|(([schd])([0-9jqkta=]|(10))))$"))) 
+			if (parameters.Count != 4 || parameters[0] != "continue" || parameters.Skip(1).Any(x => !Regex.IsMatch(x,"^([\djqkta=]|10)[schd]|[schd]([\djqkta=]|10)$"))) 
 			{
 				yield return "sendtochaterror Invalid command.";
 				yield break;
 			}
-			
+			List<int> cardsToDealTP = new List(){0,0,0};
+			string value, suit;
+			for (int i = 1; i<4; i++){
+				if (Regex.IsMatch(parameters[i],"^([\djqkta=]|10)[schd]$")){
+					value = Regex.Match(parameters[i],"^([\djqkta=]|10)([schd])$").Groups[1].Value;
+					suit = Regex.Match(parameters[i],"^([\djqkta=]|10)([schd])$").Groups[2].Value;
+				}
+				else if (Regex.IsMatch(parameters[i],"^[schd]([\djqkta=]|10)$")){
+					value = Regex.Match(parameters[i],"^([schd])([\djqkta=]|10)$").Groups[2].Value;
+					suit = Regex.Match(parameters[i],"^([schd])([\djqkta=]|10)$").Groups[1].Value;
+				}
+				else{
+					yield return "sendtochaterror Invalid command.";
+					yield break;
+				}
+				switch (suit){
+					case "s": cardsToDealTP[i-1] += 0; break;
+					case "c": cardsToDealTP[i-1] += 13; break;
+					case "h": cardsToDealTP[i-1] += 26; break;
+					case "d": cardsToDealTP[i-1] += 39; break;
+					default: yield return "sendtochaterror Invalid command."; yield break;
+				}
+				switch (value){
+					case "2": cardsToDealTP[i-1]+=0; break;
+					case "3": cardsToDealTP[i-1]+=1; break;
+					case "4": cardsToDealTP[i-1]+=2; break;
+					case "5": cardsToDealTP[i-1]+=3; break;
+					case "6": cardsToDealTP[i-1]+=4; break;
+					case "7": cardsToDealTP[i-1]+=5; break;
+					case "8": cardsToDealTP[i-1]+=6; break;
+					case "9": cardsToDealTP[i-1]+=7; break;
+					case "j": cardsToDealTP[i-1]+=9; break;
+					case "q": cardsToDealTP[i-1]+=10; break;
+					case "k": cardsToDealTP[i-1]+=11; break;
+					case "a": cardsToDealTP[i-1]+=12; break;
+					case "1":
+					case "0":
+					case "10":
+					case "t":
+					case "=":
+						 cardsToDealTP[i-1]+=8; break;
+					default: yield return "sendtochaterror Invalid command."; yield break;
+				}
+				if (!hands[0].Contains(cardsToDealTP[i-1])){
+					yield return $"sendtochaterror You dont have {getCardCode(cardsToDealTP[i-1])} in your hand."; yield break;
+				}
+			}
 		}
 	}
 }
