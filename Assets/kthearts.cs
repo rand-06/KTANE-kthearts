@@ -308,6 +308,7 @@ public class kthearts : MonoBehaviour
 			for (int i=0; i<4; i++) textMeshes[i].text = getPlayerText(i);
 			yield return raiseAndPass();
 			yield return continueGame(-1);
+			yield break;
 		}
 		if (currentState == 14){
 			currentState = 0;
@@ -323,14 +324,17 @@ public class kthearts : MonoBehaviour
 			{
 				ModuleSolved = true;
 				GetComponent<KMBombModule>().HandlePass();
+				button.GetComponent<MeshRenderer>().material.color = Color.green / 2f;
+				buttonText.text = "Solved!";
 			}
+			yield break;
 		}
 	}
 
 	IEnumerator raiseAndPass(){
 		raisedCards.Select(x => hands[0].IndexOf(x)).ToList().ForEach(x=> markCard(-x-1));
 		List<List<int>> raisedCardsAll = new List<List<int>>{raisedCards};
-		raisedCardsAll.AddRange(hands.Skip(1).Select(y => y.OrderBy(x => x / 13 * 13 + 12 - x % 13).Take(3).ToList()));
+		raisedCardsAll.AddRange(hands.Skip(1).Select(y => y.Shuffle().OrderByDescending(x => x % 13).Take(3).ToList()));
 		List<List<int>> newRaisedCards = new List<List<int>>{new List<int>(),new List<int>(),new List<int>(),new List<int>()};
 		for (int i=0; i<4; i++){
 			newRaisedCards[i] = raisedCardsAll[rotationTable[currentRound%4*4+i]].ToList();
