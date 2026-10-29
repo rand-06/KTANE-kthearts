@@ -228,6 +228,7 @@ public class kthearts : MonoBehaviour
 	IEnumerator continueGame(int selectedCard){
 		readyToInput = false;
 		if (selectedCard != -1) yield return dealCard(0, hands[0][selectedCard]);
+		else dealingPlayer = hands.SelectMany(x => x).IndexOf(x=> x == startingCard) / 13;
 		while (dealingPlayer!=0 && currentState!=14) yield return dealCard(dealingPlayer, preferredCard(dealtCards, allowedCards(dealtCards, hands[dealingPlayer])));
 		if (currentState!=14) {
 			readyToInput = true;
@@ -284,7 +285,6 @@ public class kthearts : MonoBehaviour
 		button.GetComponent<MeshRenderer>().material.color = Color.white / 6f;
 		dealtCards = new List<int>();
 		newHands();
-		dealingPlayer = hands.SelectMany(x => x).IndexOf(x=> x == startingCard) / 13;
 		deltaPoints = new List<int>{0,0,0,0};
 		heartsBroken = false;
 		readyToInput = false;
